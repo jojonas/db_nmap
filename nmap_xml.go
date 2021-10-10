@@ -2,6 +2,9 @@ package main
 
 import "encoding/xml"
 
+// main struct Nmaprun generated with "XML to Go" (https://www.onlinetool.io/xmltogo/)
+// based on: https://github.com/nmap/nmap/blob/972ed6bac0951dbf6fac7e13550f6a429b316e4e/zenmap/radialnet/share/sample/nmap_example.xml
+
 type NmaprunHeader struct {
 	XMLName          xml.Name `xml:"nmaprun"`
 	Text             string   `xml:",chardata"`
