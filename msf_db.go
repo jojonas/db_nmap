@@ -9,6 +9,18 @@ import (
 )
 
 func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHost) (int, error) {
+	hasOpen := false
+	for _, port := range host.Ports.Port {
+		if port.State.State == "open" {
+			hasOpen = true
+			break
+		}
+	}
+
+	if !hasOpen {
+		return 0, nil
+	}
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("beginning transaction: %w", err)
@@ -25,18 +37,6 @@ func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHos
 	purpose := "device"
 	if len(host.Os.Osclass) > 0 {
 		purpose = host.Os.Osclass[0].Type
-	}
-
-	hasOpen := false
-	for _, port := range host.Ports.Port {
-		if port.State.State == "open" {
-			hasOpen = true
-			break
-		}
-	}
-
-	if !hasOpen {
-		return 0, nil
 	}
 
 	log.Debugf("Inserting/updating host %s (%s)...", host.Address.Addr, host.Hostnames.Hostname.Name)
