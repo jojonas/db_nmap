@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 )
 
 type HandleHostFunc func(host NmapHost) error
@@ -147,11 +148,15 @@ func runNmap(cmd *exec.Cmd, handle HandleHostFunc) error {
 
 	cmd.ExtraFiles = []*os.File{writerPipe}
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
 		err := parseNmapXML(readerPipe, handle)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error watching XML: %v\n", err)
 		}
+		wg.Done()
 	}()
 
 	log.Debugf("Running %q ...", cmd)
@@ -161,6 +166,8 @@ func runNmap(cmd *exec.Cmd, handle HandleHostFunc) error {
 	if err != nil {
 		return fmt.Errorf("running command %q: %w", cmd, err)
 	}
+
+	wg.Wait()
 
 	return nil
 }
