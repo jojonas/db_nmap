@@ -6,30 +6,37 @@ import (
 	"os/exec"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/jojonas/db_nmap/internal"
 	"github.com/sirupsen/logrus"
 )
 
 var log = logrus.New()
+var connString = ""
 
 func main() {
 	log.SetLevel(logrus.DebugLevel)
 
-	workspace := "default"
-
 	ctx := context.Background()
 
-	conn, err := pgx.Connect(ctx, "")
+	if connString != "" {
+		log.Infof("Connecting with PostgreSQL connection string: %q", connString)
+	}
+
+	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v", err)
+		log.Fatalf("Unable to connect to PostgreSQL database: %v", err)
 	}
 	defer conn.Close(ctx)
 
 	cfg := conn.Config()
-	log.Infof("Connected to Metasploit database at host=%s port=%d database=%s !", cfg.Host, cfg.Port, cfg.Database)
+	log.Infof("Connected to Metasploit PostgreSQL database %q at %s:%d as %q", cfg.Database, cfg.Host, cfg.Port, cfg.User)
 
-	row := conn.QueryRow(ctx, "select id from workspaces where name=$1", workspace)
-	var workspaceId int
-	err = row.Scan(&workspaceId)
+	workspace := os.Getenv("MSF_WORKSPACE")
+	if workspace == "" {
+		workspace = "default"
+	}
+
+	workspaceId, err := internal.GetWorkspaceId(ctx, conn, workspace)
 	if err != nil {
 		log.Fatalf("Unable to read ID of workspace %q: %v", workspace, err)
 	}
@@ -43,8 +50,8 @@ func main() {
 
 	hostCount := 0
 	serviceCount := 0
-	err = runNmap(cmd, func(host NmapHost) error {
-		n, err := insertHost(ctx, conn, int(workspaceId), host)
+	err = runNmap(cmd, func(host internal.NmapHost) error {
+		n, err := internal.InsertHost(ctx, conn, int(workspaceId), host)
 
 		if err != nil {
 			log.Warnf("Inserting host into DB: %v", err)

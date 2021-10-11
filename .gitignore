@@ -1,3 +1,4 @@
-/db_nmap
 .envrc
-*.xml
+/*.xml
+/db_nmap
+/db_import

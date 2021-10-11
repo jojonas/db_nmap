@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"context"
@@ -8,16 +8,29 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHost) (int, error) {
-	hasOpen := false
+func hasOpenPorts(host NmapHost) bool {
 	for _, port := range host.Ports.Port {
 		if port.State.State == "open" {
-			hasOpen = true
-			break
+			return true
 		}
 	}
+	return false
+}
 
-	if !hasOpen {
+func GetWorkspaceId(ctx context.Context, conn *pgx.Conn, workspaceName string) (int, error) {
+	row := conn.QueryRow(ctx, "SELECT id FROM workspaces WHERE name=$1 LIMIT 1", workspaceName)
+
+	var workspaceId int
+	err := row.Scan(&workspaceId)
+	if err != nil {
+		return 0, err
+	}
+
+	return workspaceId, nil
+}
+
+func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapHost) (int, error) {
+	if !hasOpenPorts(host) {
 		log.Debugf("Host %s does not have any open ports, skipping.", host.Address.Addr)
 		return 0, nil
 	}
@@ -63,7 +76,7 @@ func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHos
 		host.Hostnames.Hostname.Name, // name
 		"alive",                      // state
 		osName,                       // os_name
-		workspace,                    // workspace
+		workspaceId,                  // workspace
 		now,                          // updated_at
 		purpose,                      // purpose
 	).Scan(&hostId)
@@ -74,39 +87,12 @@ func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHos
 
 	openPortCount := 0
 	for _, port := range host.Ports.Port {
-		if port.State.State != "open" {
-			continue
-		}
-
-		openPortCount += 1
-		log.Debugf("Inserting/updating service %s:%d (%s) - %s", host.Address.Addr, port.Portid, port.Protocol, port.Service.Name)
-
-		_, err := tx.Exec(ctx,
-			`INSERT INTO services (
-				host_id, 
-				created_at, 
-				port, 
-				proto, 
-				state, 
-				name, 
-				updated_at, 
-				info
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			ON CONFLICT (host_id, port, proto) DO UPDATE 
-			SET updated_at = $2, state = $5, name = $6, info = $8`,
-			hostId,
-			now,
-			port.Portid,
-			port.Protocol,
-			port.State.State,
-			port.Service.Name,
-			now,
-			port.Service.Product,
-		)
-
+		err := InsertService(ctx, tx, hostId, port)
 		if err != nil {
 			return 0, fmt.Errorf("inserting port %s/%d for host %d: %w", port.Protocol, port.Portid, hostId, err)
 		}
+
+		openPortCount++
 	}
 
 	err = tx.Commit(ctx)
@@ -115,4 +101,42 @@ func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHos
 	}
 
 	return openPortCount, nil
+}
+
+func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapService) error {
+	if service.State.State != "open" {
+		return nil
+	}
+
+	log.Debugf("Inserting/updating service %s:%d (%s)...", service.Protocol, service.Portid, service.Service.Name)
+
+	now := time.Now()
+	_, err := tx.Exec(ctx,
+		`INSERT INTO services (
+			host_id, 
+			created_at, 
+			port, 
+			proto, 
+			state, 
+			name, 
+			updated_at, 
+			info
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (host_id, port, proto) DO UPDATE 
+		SET updated_at = $2, state = $5, name = $6, info = $8`,
+		hostId,
+		now,
+		service.Portid,
+		service.Protocol,
+		service.State.State,
+		service.Service.Name,
+		now,
+		service.Service.Product,
+	)
+
+	if err != nil {
+		return fmt.Errorf("inserting port %s/%d for host %d: %w", service.Protocol, service.Portid, hostId, err)
+	}
+
+	return nil
 }

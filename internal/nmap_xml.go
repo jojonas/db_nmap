@@ -1,4 +1,4 @@
-package main
+package internal
 
 import "encoding/xml"
 
@@ -16,7 +16,7 @@ type NmaprunHeader struct {
 	Xmloutputversion string   `xml:"xmloutputversion,attr"`
 }
 
-type NmapPort struct {
+type NmapService struct {
 	Text     string `xml:",chardata"`
 	Protocol string `xml:"protocol,attr"`
 	Portid   int    `xml:"portid,attr"`
@@ -78,7 +78,7 @@ type NmapHost struct {
 				Count  string `xml:"count,attr"`
 			} `xml:"extrareasons"`
 		} `xml:"extraports"`
-		Port []NmapPort `xml:"port"`
+		Port []NmapService `xml:"port"`
 	} `xml:"ports"`
 	Os struct {
 		Text     string `xml:",chardata"`

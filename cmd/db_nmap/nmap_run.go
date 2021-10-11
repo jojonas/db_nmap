@@ -1,16 +1,14 @@
 package main
 
 import (
-	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
-)
 
-type HandleHostFunc func(host NmapHost) error
+	"github.com/jojonas/db_nmap/internal"
+)
 
 func ensureArgument(args []string, arguments ...string) []string {
 	searchArg := arguments[0]
@@ -40,62 +38,6 @@ func findArgument(args []string, argument string) string {
 	return ""
 }
 
-func parseNmapXML(reader io.Reader, handle HandleHostFunc) error {
-	decoder := xml.NewDecoder(reader)
-
-outer:
-	for {
-		token, err := decoder.Token()
-
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Debug("Unexpected EOF")
-				break outer
-			}
-
-			return fmt.Errorf("reading token: %w", err)
-		}
-		if token == nil {
-			log.Debug("Unexpected end")
-			break outer
-		}
-
-		switch t := token.(type) {
-		case xml.StartElement:
-			switch t.Name.Local {
-			case "nmaprun":
-				header := NmaprunHeader{}
-				err = decoder.DecodeElement(&header, &t)
-				if err != nil {
-					return fmt.Errorf("reading <nmaprun>: %w", err)
-				}
-
-				checkVersion(header)
-			case "host":
-				host := NmapHost{}
-				err = decoder.DecodeElement(&host, &t)
-				if err != nil {
-					return fmt.Errorf("reading <host>: %w", err)
-				}
-
-				err := handle(host)
-				if err != nil {
-					return fmt.Errorf("handling <host>: %w", err)
-				}
-			}
-		case xml.EndElement:
-			switch t.Name.Local {
-			case "nmaprun":
-				log.Debug("XML document complete")
-				break outer
-			}
-		default:
-		}
-	}
-
-	return nil
-}
-
 func findOutputFile(args []string) string {
 	output := findArgument(args, "-oX")
 	if output != "" {
@@ -110,22 +52,7 @@ func findOutputFile(args []string) string {
 	return ""
 }
 
-func checkVersion(header NmaprunHeader) {
-	testedVersions := []string{"7.92"}
-	isTested := false
-	for _, version := range testedVersions {
-		if header.Version == version {
-			isTested = true
-			break
-		}
-	}
-
-	if !isTested {
-		log.Warnf("db_nmap was not tested against Nmap version %s!", header.Version)
-	}
-}
-
-func runNmap(cmd *exec.Cmd, handle HandleHostFunc) error {
+func runNmap(cmd *exec.Cmd, handle internal.HandleHostFunc) error {
 	outputFilename := findOutputFile(cmd.Args)
 	cmd.Args = ensureArgument(cmd.Args, "-oX", "/dev/fd/3")
 
@@ -152,7 +79,7 @@ func runNmap(cmd *exec.Cmd, handle HandleHostFunc) error {
 
 	wg.Add(1)
 	go func() {
-		err := parseNmapXML(readerPipe, handle)
+		err := internal.ParseNmapXML(readerPipe, handle)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error watching XML: %v\n", err)
 		}
