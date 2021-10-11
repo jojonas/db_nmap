@@ -18,6 +18,7 @@ func insertHost(ctx context.Context, conn *pgx.Conn, workspace int, host NmapHos
 	}
 
 	if !hasOpen {
+		log.Debugf("Host %s does not have any open ports, skipping.", host.Address.Addr)
 		return 0, nil
 	}
 

@@ -48,12 +48,14 @@ outer:
 
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				log.Debug("Unexpected EOF")
 				break outer
 			}
 
 			return fmt.Errorf("reading token: %w", err)
 		}
 		if token == nil {
+			log.Debug("Unexpected end")
 			break outer
 		}
 
@@ -83,6 +85,7 @@ outer:
 		case xml.EndElement:
 			switch t.Name.Local {
 			case "nmaprun":
+				log.Debug("XML document complete")
 				break outer
 			}
 		default:
