@@ -46,6 +46,8 @@ func main() {
 	log.Infof("Wrapper stats: registered %d hosts with %d services.", hostCount, serviceCount)
 
 	if err != nil {
-		log.Fatalf("%v", err)
+		log.Errorf("%v", err)
 	}
+
+	os.Exit(cmd.ProcessState.ExitCode())
 }
