@@ -76,6 +76,6 @@ func checkVersion(version string) {
 	}
 
 	if !isTested {
-		log.Warnf("db_nmap was not tested against Nmap version %s!", version)
+		log.Warnf("This program was not tested against Nmap version %s.", version)
 	}
 }

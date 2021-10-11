@@ -16,11 +16,11 @@ var connString = ""
 func main() {
 	log.SetLevel(logrus.DebugLevel)
 
-	ctx := context.Background()
-
 	if connString != "" {
 		log.Infof("Connecting with PostgreSQL connection string: %q", connString)
 	}
+
+	ctx := context.Background()
 
 	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
