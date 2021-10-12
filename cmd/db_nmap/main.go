@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -28,6 +29,11 @@ func main() {
 	hostCount := 0
 	serviceCount := 0
 	err = runNmap(cmd, func(host internal.NmapHost) error {
+		conn, err = internal.CheckForReconnect(ctx, conn, 10)
+		if err != nil {
+			return fmt.Errorf("reconnecting: %w", err)
+		}
+
 		n, err := internal.InsertHost(ctx, conn, int(workspaceId), host)
 
 		if err != nil {
