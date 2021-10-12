@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/jojonas/db_nmap/internal"
@@ -38,6 +40,15 @@ func findArgument(args []string, argument string) string {
 	return ""
 }
 
+func hasArgument(args []string, argument string) bool {
+	for _, a := range args {
+		if a == argument {
+			return true
+		}
+	}
+	return false
+}
+
 func findOutputFile(args []string) string {
 	output := findArgument(args, "-oX")
 	if output != "" {
@@ -53,8 +64,18 @@ func findOutputFile(args []string) string {
 }
 
 func runNmap(cmd *exec.Cmd, handle internal.HandleHostFunc) error {
-	outputFilename := findOutputFile(cmd.Args)
-	cmd.Args = ensureArgument(cmd.Args, "-oX", "/dev/fd/3")
+	resumeFilename := findArgument(cmd.Args, "--resume")
+	isResume := resumeFilename != ""
+
+	outputFilename := ""
+
+	if isResume {
+		log.Debugf("Resuming from file %q.", resumeFilename)
+		outputFilename = strings.TrimSuffix(resumeFilename, filepath.Ext(resumeFilename)) + ".xml"
+	} else {
+		outputFilename = findOutputFile(cmd.Args)
+		cmd.Args = ensureArgument(cmd.Args, "-oX", "/dev/fd/3")
+	}
 
 	var readerPipe io.Reader
 	readerPipe, writerPipe, err := os.Pipe()
@@ -64,9 +85,19 @@ func runNmap(cmd *exec.Cmd, handle internal.HandleHostFunc) error {
 	defer writerPipe.Close()
 
 	if outputFilename != "" {
-		outputFile, err := os.Create(outputFilename)
-		if err != nil {
-			return fmt.Errorf("opening %v for writing: %w", outputFilename, err)
+		log.Debugf("Teeing to file %q.", outputFilename)
+
+		var outputFile *os.File
+		if isResume {
+			outputFile, err = os.OpenFile(outputFilename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("opening %q for appending: %w", outputFilename, err)
+			}
+		} else {
+			outputFile, err = os.Create(outputFilename)
+			if err != nil {
+				return fmt.Errorf("opening %v for writing: %w", outputFilename, err)
+			}
 		}
 		defer outputFile.Close()
 
