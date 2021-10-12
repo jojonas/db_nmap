@@ -53,8 +53,6 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapH
 		purpose = host.Os.Osclass[0].Type
 	}
 
-	log.Debugf("Inserting/updating host %s (%s)...", host.Address.Addr, host.Hostnames.Hostname.Name)
-
 	var hostId int
 	err = tx.QueryRow(ctx,
 		`INSERT INTO hosts (
@@ -85,11 +83,13 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapH
 		return 0, fmt.Errorf("inserting host %v: %w", host.Address.Addr, err)
 	}
 
+	log.Debugf("Inserted/updated host %s (%s).", host.Address.Addr, host.Hostnames.Hostname.Name)
+
 	openPortCount := 0
 	for _, port := range host.Ports.Port {
 		err := InsertService(ctx, tx, hostId, port)
 		if err != nil {
-			return 0, fmt.Errorf("inserting port %s/%d for host %d: %w", port.Protocol, port.Portid, hostId, err)
+			return 0, fmt.Errorf("inserting port %s/%d for host %s: %w", port.Protocol, port.Portid, host.Address.Addr, err)
 		}
 
 		openPortCount++
@@ -107,8 +107,6 @@ func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapServi
 	if service.State.State != "open" {
 		return nil
 	}
-
-	log.Debugf("Inserting/updating service %s:%d (%s)...", service.Protocol, service.Portid, service.Service.Name)
 
 	now := time.Now()
 	_, err := tx.Exec(ctx,
@@ -134,8 +132,15 @@ func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapServi
 		service.Service.Product,
 	)
 
+	name := service.Service.Name
+	if service.Service.Product != "" {
+		name = service.Service.Product
+	}
+
+	log.Debugf("Inserted/updated service %s:%d (%s).", service.Protocol, service.Portid, name)
+
 	if err != nil {
-		return fmt.Errorf("inserting port %s/%d for host %d: %w", service.Protocol, service.Portid, hostId, err)
+		return fmt.Errorf("inserting port %s/%d: %w", service.Protocol, service.Portid, err)
 	}
 
 	return nil

@@ -25,7 +25,7 @@ func Connect(ctx context.Context) (*pgx.Conn, int, error) {
 	}
 
 	cfg := conn.Config()
-	log.Infof("Connected to Metasploit PostgreSQL database %q at %s:%d as %q", cfg.Database, cfg.Host, cfg.Port, cfg.User)
+	log.Infof("Connected to Metasploit PostgreSQL database %q at %s:%d as user %q", cfg.Database, cfg.Host, cfg.Port, cfg.User)
 
 	workspace := os.Getenv(WorkspaceEnvVar)
 	if workspace == "" {
@@ -34,10 +34,10 @@ func Connect(ctx context.Context) (*pgx.Conn, int, error) {
 
 	workspaceId, err := GetWorkspaceId(ctx, conn, workspace)
 	if err != nil {
-		return nil, 0, fmt.Errorf("reading ID of workspace %q: %w", workspace, err)
+		return nil, 0, fmt.Errorf("reading ID of Metasploit workspace %q: %w", workspace, err)
 	}
 
-	log.Debugf("ID of workspace %q: %d", workspace, workspaceId)
+	log.Debugf("ID of Metasploit workspace %q: %d", workspace, workspaceId)
 
 	return conn, workspaceId, nil
 }
