@@ -7,6 +7,8 @@ import (
 	"io"
 )
 
+var TestedVersions = []string{"7.40", "7.92"}
+
 type HandleHostFunc func(host NmapHost) error
 
 func ParseNmapXML(reader io.Reader, handle HandleHostFunc) error {
@@ -65,10 +67,8 @@ outer:
 }
 
 func checkVersion(version string) {
-	testedVersions := []string{"7.40", "7.92"}
-
 	isTested := false
-	for _, testedVersions := range testedVersions {
+	for _, testedVersions := range TestedVersions {
 		if version == testedVersions {
 			isTested = true
 			break

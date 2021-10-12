@@ -1,0 +1,19 @@
+Usage: {{.Name}} <nmap arguments>
+
+{{.Name}} is a wrapper around Nmap that inserts hosts and services into a
+Metasploit database right after the corresponding host group has been scanned.
+It does so by reading Nmap's XML output and parsing it as a stream of hosts.
+{{if ne .ConnString ""}}
+The default database connection string defined at compile time is:
+{{.ConnString}}
+{{end}}
+The default database settings can be overriden by specifying environment
+variables such as PGHOST, PGPORT, PGUSER or PGPASSWORD. For a full list of
+options, see:
+https://www.postgresql.org/docs/current/libpq-envars.html
+
+The destination workspace can be configured with the environment variable
+{{.WorkspaceEnvVar}}. 
+
+{{.Name}} was tested with Nmap versions: {{join .TestedVersions ", "}}
+

@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+	"text/template"
+
+	_ "embed"
 
 	"github.com/jojonas/db_nmap/internal"
 )
@@ -13,6 +18,10 @@ var log = internal.Logger
 var binaryPath = "nmap"
 
 func main() {
+	if hasArgument(os.Args, "--help") || hasArgument(os.Args, "-h") {
+		usage()
+	}
+
 	ctx := context.Background()
 
 	conn, workspaceId, err := internal.Connect(ctx)
@@ -56,4 +65,35 @@ func main() {
 	}
 
 	os.Exit(cmd.ProcessState.ExitCode())
+}
+
+//go:embed usage.txt
+var usageTemplate string
+
+func usage() {
+	vars := struct {
+		Name            string
+		ConnString      string
+		WorkspaceEnvVar string
+		TestedVersions  []string
+	}{
+		Name:            filepath.Base(os.Args[0]),
+		ConnString:      internal.ConnString,
+		WorkspaceEnvVar: internal.WorkspaceEnvVar,
+		TestedVersions:  internal.TestedVersions,
+	}
+
+	tmpl := template.New("usage.txt")
+	tmpl = tmpl.Funcs(template.FuncMap{"join": strings.Join})
+	tmpl, err := tmpl.Parse(usageTemplate)
+
+	if err != nil {
+		log.Errorf("Parsing template usage.txt: %v", err)
+		return
+	}
+
+	err = tmpl.Execute(os.Stdout, vars)
+	if err != nil {
+		log.Errorf("Executing template usage.txt: %v", err)
+	}
 }

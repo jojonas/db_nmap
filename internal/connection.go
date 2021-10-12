@@ -10,14 +10,16 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-var connString = ""
+var ConnString = ""
+
+const WorkspaceEnvVar = "MSF_WORKSPACE"
 
 func Connect(ctx context.Context) (*pgx.Conn, int, error) {
-	if connString != "" {
-		log.Infof("Connecting with PostgreSQL connection string: %q", connString)
+	if ConnString != "" {
+		log.Infof("Connecting with PostgreSQL connection string: %q", ConnString)
 	}
 
-	conn, err := pgx.Connect(ctx, connString)
+	conn, err := pgx.Connect(ctx, ConnString)
 	if err != nil {
 		return nil, 0, fmt.Errorf("connecting to PostgreSQL database: %w", err)
 	}
@@ -25,7 +27,7 @@ func Connect(ctx context.Context) (*pgx.Conn, int, error) {
 	cfg := conn.Config()
 	log.Infof("Connected to Metasploit PostgreSQL database %q at %s:%d as %q", cfg.Database, cfg.Host, cfg.Port, cfg.User)
 
-	workspace := os.Getenv("MSF_WORKSPACE")
+	workspace := os.Getenv(WorkspaceEnvVar)
 	if workspace == "" {
 		workspace = "default"
 	}
