@@ -65,7 +65,7 @@ outer:
 }
 
 func checkVersion(version string) {
-	testedVersions := []string{"7.91", "7.92"}
+	testedVersions := []string{"7.40", "7.92"}
 
 	isTested := false
 	for _, testedVersions := range testedVersions {
