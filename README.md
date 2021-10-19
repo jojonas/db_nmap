@@ -67,7 +67,7 @@ In addition, the Metasploit workspace name can be set with the environment varia
 
 ## Building
 
-The project is implemented in Golang and can be built as follows:
+The project is implemented in Go and can be built as follows:
 
     go build ./cmd/db_nmap
     go build ./cmd/db_import
