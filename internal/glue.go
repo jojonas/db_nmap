@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-var TestedVersions = []string{"7.40", "7.92"}
+var TestedVersions = []string{"7.40", "7.70", "7.92"}
 
 type HandleHostFunc func(host NmapHost) error
 
