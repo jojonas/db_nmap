@@ -8,15 +8,6 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-func hasOpenPorts(host NmapHost) bool {
-	for _, port := range host.Ports.Port {
-		if port.State.State == "open" {
-			return true
-		}
-	}
-	return false
-}
-
 func GetWorkspaceId(ctx context.Context, conn *pgx.Conn, workspaceName string) (int, error) {
 	row := conn.QueryRow(ctx, "SELECT id FROM workspaces WHERE name=$1 LIMIT 1", workspaceName)
 
@@ -30,8 +21,8 @@ func GetWorkspaceId(ctx context.Context, conn *pgx.Conn, workspaceName string) (
 }
 
 func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapHost) (int, error) {
-	if !hasOpenPorts(host) {
-		log.Debugf("Host %s does not have any open ports, skipping.", host.Address.Addr)
+	if !host.HasOpenPorts() {
+		log.Debugf("Host %s does not have any open ports, skipping.", host)
 		return 0, nil
 	}
 
@@ -53,10 +44,29 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapH
 		purpose = host.Os.Osclass[0].Type
 	}
 
+	allMacs := host.AllMacAddresses()
+	preferredMac := ""
+	if len(allMacs) > 0 {
+		preferredMac = allMacs[0].String()
+	}
+
+	allIPs := host.AllIPAddresses()
+	preferredIP := ""
+	if len(allIPs) > 0 {
+		preferredIP = allIPs[0].String()
+	}
+
+	allHostnames := host.AllHostnames()
+	preferredHostname := ""
+	if len(allHostnames) > 0 {
+		preferredHostname = allHostnames[0]
+	}
+
 	var hostId int
 	err = tx.QueryRow(ctx,
 		`INSERT INTO hosts (
 			created_at, 
+			mac,
 			address, 
 			name, 
 			state, 
@@ -64,32 +74,33 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapH
 			workspace_id, 
 			updated_at, 
 			purpose 
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (address, workspace_id) DO UPDATE 
-		SET updated_at = $1, name = $3, state = $4, os_name = $5, purpose = $8
+		SET updated_at = $1, mac = $2, name = $4, state = $5, os_name = $6, purpose = $9
 		RETURNING id`,
 
-		now,                          // created_at
-		host.Address.Addr,            // address
-		host.Hostnames.Hostname.Name, // name
-		"alive",                      // state
-		osName,                       // os_name
-		workspaceId,                  // workspace
-		now,                          // updated_at
-		purpose,                      // purpose
+		now,               // created_at
+		preferredMac,      // mac
+		preferredIP,       // address
+		preferredHostname, // name
+		"alive",           // state
+		osName,            // os_name
+		workspaceId,       // workspace_id
+		now,               // updated_at
+		purpose,           // purpose
 	).Scan(&hostId)
 
 	if err != nil {
-		return 0, fmt.Errorf("inserting host %v: %w", host.Address.Addr, err)
+		return 0, fmt.Errorf("inserting host %s: %w", host, err)
 	}
 
-	log.Debugf("Inserted/updated host %s (%s).", host.Address.Addr, host.Hostnames.Hostname.Name)
+	log.Debugf("Inserted/updated host %s.", host)
 
 	openPortCount := 0
 	for _, port := range host.Ports.Port {
 		err := InsertService(ctx, tx, hostId, port)
 		if err != nil {
-			return 0, fmt.Errorf("inserting port %s/%d for host %s: %w", port.Protocol, port.Portid, host.Address.Addr, err)
+			return 0, fmt.Errorf("inserting port %s/%d for host %s: %w", port.Protocol, port.Portid, host, err)
 		}
 
 		openPortCount++
@@ -106,6 +117,11 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, host NmapH
 func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapService) error {
 	if service.State.State != "open" {
 		return nil
+	}
+
+	name := service.Service.Name
+	if service.Service.Tunnel != "" {
+		name = fmt.Sprintf("%s/%s", service.Service.Tunnel, service.Service.Name)
 	}
 
 	now := time.Now()
@@ -127,20 +143,15 @@ func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapServi
 		service.Portid,
 		service.Protocol,
 		service.State.State,
-		service.Service.Name,
+		name,
 		now,
 		service.Service.Product,
 	)
 
-	name := service.Service.Name
-	if service.Service.Product != "" {
-		name = service.Service.Product
-	}
-
-	log.Debugf("Inserted/updated service %s:%d (%s).", service.Protocol, service.Portid, name)
+	log.Debugf("Inserted/updated service %s.", service)
 
 	if err != nil {
-		return fmt.Errorf("inserting port %s/%d: %w", service.Protocol, service.Portid, err)
+		return fmt.Errorf("inserting service %s: %w", service, err)
 	}
 
 	return nil

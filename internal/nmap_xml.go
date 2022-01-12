@@ -1,6 +1,10 @@
 package internal
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"fmt"
+	"net"
+)
 
 // main struct Nmaprun generated with "XML to Go" (https://www.onlinetool.io/xmltogo/)
 // based on: https://github.com/nmap/nmap/blob/972ed6bac0951dbf6fac7e13550f6a429b316e4e/zenmap/radialnet/share/sample/nmap_example.xml
@@ -53,14 +57,14 @@ type NmapHost struct {
 		State  string `xml:"state,attr"`
 		Reason string `xml:"reason,attr"`
 	} `xml:"status"`
-	Address struct {
+	Address []struct {
 		Text     string `xml:",chardata"`
 		Addr     string `xml:"addr,attr"`
 		Addrtype string `xml:"addrtype,attr"`
 	} `xml:"address"`
 	Hostnames struct {
 		Text     string `xml:",chardata"`
-		Hostname struct {
+		Hostname []struct {
 			Text string `xml:",chardata"`
 			Name string `xml:"name,attr"`
 			Type string `xml:"type,attr"`
@@ -211,4 +215,89 @@ type Nmaprun struct {
 			Total string `xml:"total,attr"`
 		} `xml:"hosts"`
 	} `xml:"runstats"`
+}
+
+func (h NmapHost) HasOpenPorts() bool {
+	for _, port := range h.Ports.Port {
+		if port.State.State == "open" {
+			return true
+		}
+	}
+	return false
+}
+
+func (h NmapHost) AllIPAddresses() []net.IP {
+	addresses := make([]net.IP, 0)
+
+	for _, addr := range h.Address {
+		if addr.Addrtype == "ipv4" || addr.Addrtype == "ipv6" {
+			parsed := net.ParseIP(addr.Addr)
+			if parsed == nil {
+				continue
+			}
+
+			addresses = append(addresses, parsed)
+		}
+	}
+
+	return addresses
+}
+
+func (h NmapHost) AllHostnames() []string {
+	hostnames := make([]string, 0)
+
+	for _, hostname := range h.Hostnames.Hostname {
+		hostnames = append(hostnames, hostname.Name)
+	}
+
+	return hostnames
+}
+
+func (h NmapHost) AllMacAddresses() []net.HardwareAddr {
+	addresses := make([]net.HardwareAddr, 0)
+
+	for _, addr := range h.Address {
+		if addr.Addrtype == "mac" {
+			parsed, err := net.ParseMAC(addr.Addr)
+			if err != nil {
+				continue
+			}
+
+			addresses = append(addresses, parsed)
+		}
+	}
+
+	return addresses
+}
+
+func (h NmapHost) String() string {
+	ips := h.AllIPAddresses()
+	if len(ips) > 0 {
+		return ips[0].String()
+	}
+
+	hostnames := h.AllHostnames()
+	if len(hostnames) > 0 {
+		return hostnames[0]
+	}
+
+	return "<unknown>"
+}
+
+func (s NmapService) NameWithTunnel() string {
+	prefix := ""
+	if s.Service.Tunnel != "" {
+		prefix = fmt.Sprintf("%s/", s.Service.Tunnel)
+	}
+	return fmt.Sprintf("%s%s", prefix, s.Service.Name)
+}
+
+func (s NmapService) String() string {
+	suffix := ""
+
+	if s.Service.Name != "" {
+		suffix = fmt.Sprintf(" (%s)", s.NameWithTunnel())
+	}
+
+	return fmt.Sprintf("%s:%d%s", s.Protocol, s.Portid, suffix)
 }
