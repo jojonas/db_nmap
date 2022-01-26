@@ -1,19 +1,31 @@
 package internal
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"net"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+type MsfWorkspace struct {
+	Id          int
+	Name        string
+	Description string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (MsfWorkspace) TableName() string {
+	return "workspaces"
+}
 
 type MsfHost struct {
 	Id          int
 	WorkspaceId int
-	Address     net.IP
+	Address     string
 
 	MAC     string
 	Name    string
@@ -23,6 +35,10 @@ type MsfHost struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+func (MsfHost) TableName() string {
+	return "hosts"
 }
 
 type MsfService struct {
@@ -37,25 +53,29 @@ type MsfService struct {
 	Info      string
 }
 
-func GetWorkspaceId(ctx context.Context, conn *pgx.Conn, workspaceName string) (int, error) {
-	row := conn.QueryRow(ctx, "SELECT id FROM workspaces WHERE name=$1 LIMIT 1", workspaceName)
-
-	var workspaceId int
-	err := row.Scan(&workspaceId)
-	if err != nil {
-		return 0, err
-	}
-
-	return workspaceId, nil
+func (MsfService) TableName() string {
+	return "services"
 }
 
-func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, nmapHost NmapHost) (int, error) {
+func GetWorkspaceId(db *gorm.DB, workspaceName string) (int, error) {
+	var workspace MsfWorkspace
+
+	err := db.Where("name = ?", workspaceName).First(&workspace).Error
+	if err != nil {
+		return 0, fmt.Errorf("get id for workspace %q: %w", workspaceName, err)
+	}
+
+	return workspace.Id, nil
+}
+
+func InsertHost(db *gorm.DB, workspaceId int, nmapHost NmapHost) (int, error) {
 	if !nmapHost.HasOpenPorts() {
 		log.Debugf("Host %s does not have any open ports, skipping.", nmapHost)
 		return 0, nil
 	}
 
 	now := time.Now()
+	openPortCount := 0
 
 	allIPs := nmapHost.AllIPAddresses()
 	var preferredIP net.IP
@@ -63,200 +83,128 @@ func InsertHost(ctx context.Context, conn *pgx.Conn, workspaceId int, nmapHost N
 		preferredIP = net.ParseIP(allIPs[0].String())
 	}
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
+	db.Transaction(func(tx *gorm.DB) error {
+		var msfHost MsfHost
 
-	msfHost := MsfHost{}
+		msfHost.WorkspaceId = workspaceId
+		msfHost.Address = preferredIP.String()
 
-	err = tx.QueryRow(ctx,
-		`SELECT 
-				id, 
-				workspace_id, 
-				address, 
-				mac, 
-				name, 
-				state, 
-				os_name, 
-				purpose,
-				created_at, 
-				updated_at
-			FROM hosts 
-			WHERE workspace_id=$1 AND address=$2
-			LIMIT 1
-			FOR UPDATE`,
-		workspaceId,
-		preferredIP.String(),
-	).Scan(
-		&msfHost.Id,
-		&msfHost.WorkspaceId,
-		&msfHost.Address,
-		&msfHost.MAC,
-		&msfHost.Name,
-		&msfHost.State,
-		&msfHost.OSName,
-		&msfHost.Purpose,
-		&msfHost.CreatedAt,
-		&msfHost.UpdatedAt,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		log.Debugf("host %v not found in database", preferredIP)
-	} else if err != nil {
-		return 0, fmt.Errorf("query host %v: %w", preferredIP, err)
-	}
-
-	msfHost.WorkspaceId = workspaceId
-	msfHost.Address = preferredIP
-
-	allMacs := nmapHost.AllMacAddresses()
-	if len(allMacs) > 0 {
-		msfHost.MAC = allMacs[0].String()
-	}
-
-	allHostnames := nmapHost.AllHostnames()
-	if len(allHostnames) > 0 {
-		msfHost.Name = allHostnames[0]
-	}
-
-	msfHost.State = "alive"
-
-	if len(nmapHost.Os.Osmatch) > 0 {
-		msfHost.OSName = nmapHost.Os.Osmatch[0].Name
-	}
-
-	if msfHost.Purpose == "" {
-		msfHost.Purpose = "device"
-	}
-
-	if len(nmapHost.Os.Osclass) > 0 {
-		msfHost.Purpose = nmapHost.Os.Osclass[0].Type
-	}
-
-	if msfHost.CreatedAt.IsZero() {
-		msfHost.CreatedAt = now
-	}
-
-	msfHost.UpdatedAt = now
-
-	err = tx.QueryRow(ctx,
-		`INSERT INTO hosts (
-			workspace_id, 
-			address, 
-			mac, 
-			name, 
-			state, 
-			os_name, 
-			purpose,
-			created_at, 
-			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (workspace_id, address) DO UPDATE SET 
-			mac = excluded.mac, 
-			name = excluded.name, 
-			state = excluded.state, 
-			os_name = excluded.os_name, 
-			purpose = excluded.purpose, 
-			created_at = excluded.created_at, 
-			updated_at = excluded.updated_at
-		RETURNING
-			id,
-			workspace_id, 
-			address, 
-			mac, 
-			name, 
-			state, 
-			os_name, 
-			purpose,
-			created_at, 
-			updated_at
-		`,
-		msfHost.WorkspaceId,
-		msfHost.Address.String(), // need to call String(), otherwise IPv4 addresses are inserted as IPv6
-		msfHost.MAC,
-		msfHost.Name,
-		msfHost.State,
-		msfHost.OSName,
-		msfHost.Purpose,
-		msfHost.CreatedAt,
-		msfHost.UpdatedAt,
-	).Scan(
-		&msfHost.Id,
-		&msfHost.WorkspaceId,
-		&msfHost.Address,
-		&msfHost.MAC,
-		&msfHost.Name,
-		&msfHost.State,
-		&msfHost.OSName,
-		&msfHost.Purpose,
-		&msfHost.CreatedAt,
-		&msfHost.UpdatedAt,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("upsert host %s: %w", nmapHost, err)
-	}
-
-	log.Debugf("Inserted/updated host %s.", nmapHost)
-
-	openPortCount := 0
-	for _, port := range nmapHost.Ports.Port {
-		err := InsertService(ctx, tx, msfHost.Id, port)
+		err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("workspace_id = ? AND address = ?", msfHost.WorkspaceId, msfHost.Address).
+			FirstOrCreate(&msfHost).
+			Error
 		if err != nil {
-			return 0, fmt.Errorf("insert port %s/%d for host %s: %w", port.Protocol, port.Portid, nmapHost, err)
+			return fmt.Errorf("query host %v: %w", preferredIP, err)
 		}
 
-		openPortCount++
-	}
+		msfHost.WorkspaceId = workspaceId
+		msfHost.Address = preferredIP.String()
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("commit transaction: %w", err)
-	}
+		allMacs := nmapHost.AllMacAddresses()
+		if len(allMacs) > 0 {
+			msfHost.MAC = allMacs[0].String()
+		}
+
+		allHostnames := nmapHost.AllHostnames()
+		if len(allHostnames) > 0 {
+			msfHost.Name = allHostnames[0]
+		}
+
+		msfHost.State = "alive"
+
+		if len(nmapHost.Os.Osmatch) > 0 {
+			msfHost.OSName = nmapHost.Os.Osmatch[0].Name
+		}
+
+		if msfHost.Purpose == "" {
+			msfHost.Purpose = "device"
+		}
+
+		if len(nmapHost.Os.Osclass) > 0 {
+			msfHost.Purpose = nmapHost.Os.Osclass[0].Type
+		}
+
+		if msfHost.CreatedAt.IsZero() {
+			msfHost.CreatedAt = now
+		}
+
+		msfHost.UpdatedAt = now
+
+		err = tx.Save(&msfHost).Error
+		if err != nil {
+			return fmt.Errorf("save host %v: %w", msfHost, err)
+		}
+
+		log.Debugf("Inserted/updated host %s.", nmapHost)
+
+		for _, port := range nmapHost.Ports.Port {
+			err := InsertService(tx, msfHost.Id, port)
+			if err != nil {
+				return fmt.Errorf("insert port %s/%d for host %s: %w", port.Protocol, port.Portid, nmapHost, err)
+			}
+
+			openPortCount++
+		}
+
+		return nil
+	})
 
 	return openPortCount, nil
 }
 
-func InsertService(ctx context.Context, tx pgx.Tx, hostId int, service NmapService) error {
+func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 	if service.State.State != "open" {
 		return nil
 	}
+
+	var msfService MsfService
+
+	err := db.
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where(
+			"host_id = ? AND proto = ? AND port = ?",
+			hostId,
+			service.Protocol,
+			service.Portid,
+		).
+		FirstOrCreate(&msfService).
+		Error
+
+	if err != nil {
+		return fmt.Errorf("query service %v: %w", service, err)
+	}
+
+	now := time.Now()
+
+	msfService.HostId = hostId
+	msfService.Proto = service.Protocol
+	msfService.Port = service.Portid
 
 	name := service.Service.Name
 	if service.Service.Tunnel != "" {
 		name = fmt.Sprintf("%s/%s", service.Service.Tunnel, service.Service.Name)
 	}
+	if name != "" {
+		msfService.Name = name
+	}
 
-	now := time.Now()
-	_, err := tx.Exec(ctx,
-		`INSERT INTO services (
-			host_id, 
-			created_at, 
-			port, 
-			proto, 
-			state, 
-			name, 
-			updated_at, 
-			info
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (host_id, port, proto) DO UPDATE 
-		SET updated_at = $2, state = $5, name = $6, info = $8`,
-		hostId,
-		now,
-		service.Portid,
-		service.Protocol,
-		service.State.State,
-		name,
-		now,
-		service.Service.Product,
-	)
+	if service.Service.Product != "" {
+		msfService.Info = service.Service.Product
+	}
+
+	if msfService.CreatedAt.IsZero() {
+		msfService.CreatedAt = now
+	}
+
+	msfService.UpdatedAt = now
+
+	err = db.Save(&msfService).Error
+	if err != nil {
+		return fmt.Errorf("save service %v: %w", msfService, err)
+	}
 
 	log.Debugf("Inserted/updated service %s.", service)
-
-	if err != nil {
-		return fmt.Errorf("insert service %s: %w", service, err)
-	}
 
 	return nil
 }

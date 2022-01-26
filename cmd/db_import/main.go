@@ -18,11 +18,10 @@ func main() {
 
 	ctx := context.Background()
 
-	conn, workspaceId, err := internal.Connect(ctx)
+	db, workspaceId, err := internal.Connect(ctx)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
-	defer conn.Close(ctx)
 
 	hostCount := 0
 	serviceCount := 0
@@ -35,7 +34,7 @@ func main() {
 		}
 
 		err = internal.ParseNmapXML(file, func(host internal.NmapHost) error {
-			n, err := internal.InsertHost(ctx, conn, int(workspaceId), host)
+			n, err := internal.InsertHost(db, int(workspaceId), host)
 
 			if err != nil {
 				log.Warnf("Inserting host into DB: %v", err)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,11 +23,10 @@ func main() {
 
 	ctx := context.Background()
 
-	conn, workspaceId, err := internal.Connect(ctx)
+	db, workspaceId, err := internal.Connect(ctx)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
-	defer conn.Close(ctx)
 
 	cmd := exec.CommandContext(ctx, binaryPath, os.Args[1:]...)
 
@@ -38,12 +36,7 @@ func main() {
 	hostCount := 0
 	serviceCount := 0
 	err = runNmap(cmd, func(host internal.NmapHost) error {
-		conn, err = internal.CheckForReconnect(ctx, conn, 10)
-		if err != nil {
-			return fmt.Errorf("reconnecting: %w", err)
-		}
-
-		n, err := internal.InsertHost(ctx, conn, int(workspaceId), host)
+		n, err := internal.InsertHost(db, int(workspaceId), host)
 
 		if err != nil {
 			log.Warnf("Inserting host into DB: %v", err)
