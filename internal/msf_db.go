@@ -180,6 +180,7 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 	msfService.HostId = hostId
 	msfService.Proto = service.Protocol
 	msfService.Port = service.Portid
+	msfService.State = service.State.State
 
 	name := service.Service.Name
 	if service.Service.Tunnel != "" {
