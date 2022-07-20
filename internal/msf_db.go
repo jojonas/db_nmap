@@ -192,6 +192,10 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 
 	if service.Service.Product != "" {
 		msfService.Info = service.Service.Product
+
+		if service.Service.Version != "" {
+			msfService.Info = fmt.Sprintf("%s %s", msfService.Info, service.Service.Version)
+		}
 	}
 
 	if msfService.CreatedAt.IsZero() {
