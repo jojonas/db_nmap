@@ -1,29 +1,27 @@
 name: goreleaser
 
 on:
+  workflow_dispatch:
   push:
     tags:
-      - '*'
+      - "*"
 
 jobs:
-
   release:
     name: GoReleaser build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: 1.19
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
 
-    - name: GoReleaser Action
-      uses: goreleaser/goreleaser-action@v4.2.0
-      with:
-        version: latest
-        args: release --clean
-
-
+      - name: GoReleaser Action
+        uses: goreleaser/goreleaser-action@v4.2.0
+        with:
+          version: latest
+          args: release --clean
