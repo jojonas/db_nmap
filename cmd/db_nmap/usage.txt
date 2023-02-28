@@ -1,3 +1,5 @@
+{{.Name}} {{.Version}}
+
 Usage: {{.Name}} <nmap arguments>
 
 {{.Name}} is a wrapper around Nmap that inserts hosts and services into a
@@ -15,5 +17,5 @@ https://www.postgresql.org/docs/current/libpq-envars.html
 The destination workspace can be configured with the environment variable
 {{.WorkspaceEnvVar}}. 
 
-{{.Name}} was tested with Nmap versions: {{join .TestedVersions ", "}}
+{{.Name}} {{.Version}} was tested with Nmap versions: {{join .TestedVersions ", "}}
 

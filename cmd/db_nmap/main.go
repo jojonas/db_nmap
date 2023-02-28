@@ -15,11 +15,14 @@ import (
 
 var log = internal.Logger
 var binaryPath = "nmap"
+var version string = "dev"
 
 func main() {
 	if hasArgument(os.Args, "--help") || hasArgument(os.Args, "-h") {
 		usage()
 	}
+
+	log.Infof("db_nmap %s starting...", version)
 
 	ctx := context.Background()
 
@@ -69,11 +72,13 @@ func usage() {
 		ConnString      string
 		WorkspaceEnvVar string
 		TestedVersions  []string
+		Version         string
 	}{
 		Name:            filepath.Base(os.Args[0]),
 		ConnString:      internal.ConnString,
 		WorkspaceEnvVar: internal.WorkspaceEnvVar,
 		TestedVersions:  internal.TestedVersions,
+		Version:         version,
 	}
 
 	tmpl := template.New("usage.txt")

@@ -9,12 +9,15 @@ import (
 )
 
 var log = internal.Logger
+var version string = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Usage: %s XMLFILE [XMLFILE...]\n", os.Args[0])
 		os.Exit(1)
 	}
+
+	log.Infof("db_import %s starting...", version)
 
 	ctx := context.Background()
 
