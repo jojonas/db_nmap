@@ -3,8 +3,10 @@ package internal
 import (
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -83,7 +85,7 @@ func InsertHost(db *gorm.DB, workspaceId int, nmapHost NmapHost) (int, error) {
 		preferredIP = net.ParseIP(allIPs[0].String())
 	}
 
-	db.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		var msfHost MsfHost
 
 		msfHost.WorkspaceId = workspaceId
@@ -106,10 +108,7 @@ func InsertHost(db *gorm.DB, workspaceId int, nmapHost NmapHost) (int, error) {
 			msfHost.MAC = allMacs[0].String()
 		}
 
-		allHostnames := nmapHost.AllHostnames()
-		if len(allHostnames) > 0 {
-			msfHost.Name = allHostnames[0]
-		}
+		msfHost.Name = joinHostnames(msfHost.Name, nmapHost.AllHostnames()...)
 
 		msfHost.State = "alive"
 
@@ -149,6 +148,9 @@ func InsertHost(db *gorm.DB, workspaceId int, nmapHost NmapHost) (int, error) {
 
 		return nil
 	})
+	if err != nil {
+		return 0, fmt.Errorf("transaction: %w", err)
+	}
 
 	return openPortCount, nil
 }
@@ -170,7 +172,6 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 		).
 		FirstOrCreate(&msfService).
 		Error
-
 	if err != nil {
 		return fmt.Errorf("query service %v: %w", service, err)
 	}
@@ -212,4 +213,22 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 	log.Debugf("Inserted/updated service %s.", service)
 
 	return nil
+}
+
+// AddNames merges the provided hostnames with the hostnames that are already
+// present.
+func joinHostnames(previousHostnames string, newHostnames ...string) string {
+	var allHostnames []string
+
+	for _, oldHostname := range strings.Split(previousHostnames, ",") {
+		allHostnames = append(allHostnames, strings.ToLower(strings.TrimSpace(oldHostname)))
+	}
+
+	for _, newHostname := range newHostnames {
+		allHostnames = append(allHostnames, strings.ToLower(strings.TrimSpace(newHostname)))
+	}
+
+	slices.Sort(allHostnames)
+
+	return strings.Join(slices.Compact(allHostnames), ", ")
 }
