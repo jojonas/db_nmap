@@ -220,12 +220,13 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 func joinHostnames(previousHostnames string, newHostnames ...string) string {
 	var allHostnames []string
 
-	for _, oldHostname := range strings.Split(previousHostnames, ",") {
-		allHostnames = append(allHostnames, strings.ToLower(strings.TrimSpace(oldHostname)))
-	}
+	for _, rawHostname := range append(strings.Split(previousHostnames, ","), newHostnames...) {
+		hostname := strings.ToLower(strings.TrimSpace(rawHostname))
+		if hostname == "" {
+			continue
+		}
 
-	for _, newHostname := range newHostnames {
-		allHostnames = append(allHostnames, strings.ToLower(strings.TrimSpace(newHostname)))
+		allHostnames = append(allHostnames, hostname)
 	}
 
 	slices.Sort(allHostnames)
