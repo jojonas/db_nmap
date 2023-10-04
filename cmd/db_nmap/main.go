@@ -13,13 +13,31 @@ import (
 	"github.com/jojonas/db_nmap/internal"
 )
 
-var log = internal.Logger
-var binaryPath = "nmap"
-var version string = "dev"
+const multipleHostnamesEnvVariable = "DB_NMAP_ENABLE_MULTIPLE_HOSTNAMES"
+
+var (
+	log                     = internal.Logger
+	binaryPath              = "nmap"
+	version                 = "dev"
+	enableMultipleHostnames = ""
+)
 
 func main() {
 	if hasArgument(os.Args, "--help") || hasArgument(os.Args, "-h") {
 		usage()
+	}
+
+	b := asBool(enableMultipleHostnames)
+	if b != nil {
+		internal.EnableMultipleHostnames = *b
+	}
+
+	v, ok := os.LookupEnv(multipleHostnamesEnvVariable)
+	if ok {
+		b := asBool(v)
+		if b != nil {
+			internal.EnableMultipleHostnames = *b
+		}
 	}
 
 	log.Infof("db_nmap %s starting...", version)
@@ -40,7 +58,6 @@ func main() {
 	serviceCount := 0
 	err = runNmap(cmd, func(host internal.NmapHost) error {
 		n, err := internal.InsertHost(db, int(workspaceId), host)
-
 		if err != nil {
 			log.Warnf("Inserting host into DB: %v", err)
 			return nil
@@ -84,7 +101,6 @@ func usage() {
 	tmpl := template.New("usage.txt")
 	tmpl = tmpl.Funcs(template.FuncMap{"join": strings.Join})
 	tmpl, err := tmpl.Parse(usageTemplate)
-
 	if err != nil {
 		log.Errorf("Parsing template usage.txt: %v", err)
 		return
@@ -93,5 +109,19 @@ func usage() {
 	err = tmpl.Execute(os.Stdout, vars)
 	if err != nil {
 		log.Errorf("Executing template usage.txt: %v", err)
+	}
+}
+
+func asBool(s string) *bool {
+	t := true
+	f := false
+
+	switch strings.ToLower(s) {
+	case "y", "yes", "true", "1":
+		return &t
+	case "n", "no", "false", "0":
+		return &f
+	default:
+		return nil
 	}
 }

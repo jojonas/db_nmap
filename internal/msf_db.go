@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var EnableMultipleHostnames = false
+
 type MsfWorkspace struct {
 	Id          int
 	Name        string
@@ -108,7 +110,14 @@ func InsertHost(db *gorm.DB, workspaceId int, nmapHost NmapHost) (int, error) {
 			msfHost.MAC = allMacs[0].String()
 		}
 
-		msfHost.Name = joinHostnames(msfHost.Name, nmapHost.AllHostnames()...)
+		if EnableMultipleHostnames {
+			msfHost.Name = joinHostnames(msfHost.Name, nmapHost.AllHostnames()...)
+		} else {
+			names := nmapHost.AllHostnames()
+			if len(names) > 0 {
+				msfHost.Name = names[0]
+			}
+		}
 
 		msfHost.State = "alive"
 
