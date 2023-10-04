@@ -27,14 +27,14 @@ type MsfHost struct {
 	WorkspaceId int
 	Address     string
 
-	MAC     string
-	Name    string
-	State   string
-	OSName  string
-	Purpose string
+	MAC     string `gorm:"default:null"`
+	Name    string `gorm:"default:null"`
+	State   string `gorm:"default:null"`
+	OSName  string `gorm:"default:null"`
+	Purpose string `gorm:"default:null"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"default:null"`
+	UpdatedAt time.Time `gorm:"default:null"`
 }
 
 func (MsfHost) TableName() string {
@@ -43,14 +43,14 @@ func (MsfHost) TableName() string {
 
 type MsfService struct {
 	Id        int
-	HostId    int
-	CreatedAt time.Time
+	HostId    int       `gorm:"default:null"`
+	CreatedAt time.Time `gorm:"default:null"`
 	Port      int
 	Proto     string
-	State     string
-	Name      string
-	UpdatedAt time.Time
-	Info      string
+	State     string    `gorm:"default:null"`
+	Name      string    `gorm:"default:null"`
+	UpdatedAt time.Time `gorm:"default:null"`
+	Info      string    `gorm:"default:null"`
 }
 
 func (MsfService) TableName() string {
@@ -170,7 +170,6 @@ func InsertService(db *gorm.DB, hostId int, service NmapService) error {
 		).
 		FirstOrCreate(&msfService).
 		Error
-
 	if err != nil {
 		return fmt.Errorf("query service %v: %w", service, err)
 	}
